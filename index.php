@@ -119,8 +119,8 @@
                     <th>Temps</th>
                 </tr>
                 <?php
-                    foreach($data as $trajet) {
-                        echo "<tr><td>".htmlspecialchars($liste_stations[$trajet['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$trajet['end']]['name'])."</td><td>".(int) $trajet['min']."min ".(int) $trajet['sec']."s</td></tr>";
+                    for($i = count($data) - 1; $i > max(count($data) - 11, 0); $i--) {
+                        echo "<tr><td>".htmlspecialchars($liste_stations[$data[$i]['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['end']]['name'])."</td><td>".(int) $data[$i]['min']."min ".(int) $data[$i]['sec']."s</td></tr>";
                     }
                 ?>
             </table>
