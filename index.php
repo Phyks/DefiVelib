@@ -1,5 +1,7 @@
 <?php
+    session_start();
     date_default_timezone_set("Europe/Paris");
+
     function search($array) {
         global $_POST;
         return in_array($_POST['start_search'], $array) && in_array($_POST['end_search'], $array);
@@ -10,6 +12,22 @@
     }
     else {
         $data = array();
+    }
+
+    if(!empty($_GET['suppr']) && !empty($_SESSION['admin'])) {
+        unlink($data[$_GET['suppr']]);
+    }
+
+    if(!empty($_GET['deco'])) {
+        session_destroy();
+    }
+
+    if(is_file('data/config')) {
+        $config = unserialize(gzinflate(base64_decode(file_get_contents('data/config'))));
+
+        if(!empty($_GET['code']) && $_GET['code'] == $config[0]) {
+            $_SESSION['admin'] = true;
+        }
     }
 
     $search = false;
@@ -36,7 +54,7 @@
 <html lang="fr">
 	<head>
 		<meta charset="utf-8">
-		<title>Vélibs à proximité</title>
+		<title>DéfiVélib</title>
 		<meta name="author" content="phyks">
 		<link rel="stylesheet" href="main.css" type="text/css" media="screen">
 	</head>
@@ -137,6 +155,13 @@
                     <th>Arrivée</th>
                     <th>Temps</th>
                     <th>Pseudo</th>
+                    <?php
+                        if(!empty($_SESSION['admin'])) {
+                    ?>
+                            <th>Supprimer</th>
+                    <?php
+                        }
+                    ?>
                 </tr>
                 <?php
                     if($search) {
@@ -148,13 +173,27 @@
                         }
                         array_multisort($min, SORT_DESC, $sec, SORT_DESC, $data);
 
-                        foreach($data as $result) {
-                            echo "<tr><td>".date('d/m/Y à H:i', $result['date'])."</td><td>".htmlspecialchars($liste_stations[$result['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$result['end']]['name'])."</td><td>".(int) $result['min']."min ".(int) $result['sec']."s</td><td>".htmlspecialchars($result['pseudo'])."</tr>";
+                        foreach($data as $key=>$result) {
+                            if(!empty($_SESSION['admin'])) {
+                                $delete = "<td><a href=\"?suppr=".$key."\">Supprimer</a></td>";
+                            }
+                            else {
+                                $delete = "";
+                            }
+
+                            echo "<tr><td>".date('d/m/Y à H:i', $result['date'])."</td><td>".htmlspecialchars($liste_stations[$result['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$result['end']]['name'])."</td><td>".(int) $result['min']."min ".(int) $result['sec']."s</td><td>".htmlspecialchars($result['pseudo'])."</td>".$delete."</tr>";
                         }
                     }
                     else {
                         for($i = count($data) - 1; $i >= max(count($data) - 10, 0); $i--) {
-                            echo "<tr><td>".date('d/m/Y à H:i', $data[$i]['date'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['end']]['name'])."</td><td>".(int) $data[$i]['min']."min ".(int) $data[$i]['sec']."s</td><td>".htmlspecialchars($data[$i]['pseudo'])."</tr>";
+                            if(!empty($_SESSION['admin'])) {
+                                $delete = "<td><a href=\"?suppr=".$i."\">Supprimer</a></td>";
+                            }
+                            else {
+                                $delete = "";
+                            }
+
+                            echo "<tr><td>".date('d/m/Y à H:i', $data[$i]['date'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['end']]['name'])."</td><td>".(int) $data[$i]['min']."min ".(int) $data[$i]['sec']."s</td><td>".htmlspecialchars($data[$i]['pseudo'])."</td>".$delete."</tr>";
                         }
                     }
                 ?>
@@ -173,7 +212,12 @@
             <select name="start_search" id="start_search">
                 <?php
                     foreach($liste_stations as $key=>$station) {
-                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                        if(!empty($_POST['start_search']) && $_POST['start_search'] == $key)
+                            $selected = "selected";
+                        else
+                            $selected = "";
+
+                        echo "<option value=\"".$key."\" ".$selected.">".$station['name']."</option>";
                     }
                 ?>
             </select>
@@ -182,7 +226,12 @@
             <select name="end_search" id="end_search">
                 <?php
                     foreach($liste_stations as $key=>$station) {
-                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                        if(!empty($_POST['end_search']) && $_POST['end_search'] == $key)
+                            $selected = "selected";
+                        else
+                            $selected = "";
+
+                        echo "<option value=\"".$key."\" ".$selected.">".$station['name']."</option>";
                     }
                 ?>
             </select>
@@ -191,6 +240,13 @@
             <input type="submit" value="Rechercher">
         </p>
     </form>
+    <?php
+        if(!empty($_SESSION['admin'])) {
+    ?>
+            <p><a href="?deco=1">Déconnexion</a></p>
+    <?php
+        }
+    ?>
     </div>
     </body>
 </html>
