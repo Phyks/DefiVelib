@@ -7,6 +7,40 @@
         return in_array($_POST['start_search'], $array) && in_array($_POST['end_search'], $array);
     }
 
+    // Generates a token against CSRF
+    // ==============================
+    function generate_token($name = '') {
+        if(session_id() == '')
+            session_start();
+
+        $token = uniqid(rand(), true);
+
+        $_SESSION[$name.'_token'] = $token;
+        $_SESSION[$name.'_token_time'] = time();
+
+        return $token;
+    }
+
+    // Checks that the anti-CSRF token is correct
+    // ==========================================
+    function check_token($time, $name = '') {
+        if(session_id() == '')
+            session_start();
+
+        if(isset($_SESSION[$name.'_token']) && isset($_SESSION[$name.'_token_time']) && (isset($_POST['token']) || isset($_GET['token']))) {
+            if(!empty($_POST['token']))
+                $token = $_POST['token'];
+            else
+                $token = $_GET['token'];
+
+            if($_SESSION[$name.'_token'] == $token) {
+                if($_SESSION[$name.'_token_time'] >= (time() - (int) $time))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     if(is_file('data/data')) {
         $data = unserialize(gzinflate(base64_decode(file_get_contents('data/data'))));
     }
@@ -14,8 +48,13 @@
         $data = array();
     }
 
-    if(!empty($_GET['suppr']) && !empty($_SESSION['admin'])) {
-        unlink($data[$_GET['suppr']]);
+    if(!empty($_GET['suppr']) && !empty($_SESSION['admin']) && !empty($_GET['token'])) {
+        if(check_token(600, 'defivelib')) {
+            unlink($data[$_GET['suppr']]);
+        }
+        else {
+            exit("Mauvais token, veuillez réessayer.");
+        }
     }
 
     if(!empty($_GET['deco'])) {
@@ -31,24 +70,36 @@
     }
 
     $search = false;
-    if(!empty($_POST['start_search']) && !empty($_POST['end_search'])) {
-        $search = true;
-        $data = array_filter($data, "search");
+    if(!empty($_POST['start_search']) && !empty($_POST['end_search']) & !empty($_POST['token'])) {
+        if(check_token(600, 'defivelib')) {
+            $search = true;
+            $data = array_filter($data, "search");
+        }
+        else {
+            exit("Mauvais token, veuillez réessayer.");
+        }
     }
 
     if((!empty($_POST['time_min']) || !empty($_POST['time_sec'])) && !empty($_POST['start']) && !empty($_POST['end'])) {
-        $min = (!empty($_POST['time_min'])) ? (int) $_POST['time_min'] : 0;
-        $sec = (!empty($_POST['time_sec'])) ? (int) $_POST['time_sec'] : 0;
-        $pseudo = (!empty($_POST['pseudo'])) ? $_POST['pseudo'] : "Anonyme";
+        if(check_token(600, 'defivelib')) {
+            $min = (!empty($_POST['time_min'])) ? (int) $_POST['time_min'] : 0;
+            $sec = (!empty($_POST['time_sec'])) ? (int) $_POST['time_sec'] : 0;
+            $pseudo = (!empty($_POST['pseudo'])) ? $_POST['pseudo'] : "Anonyme";
 
-        $data[] = array("date"=>time(), "start"=>(int) $_POST['start'], "end"=>(int) $_POST['end'], "min"=>$min, "sec"=>$sec, "pseudo"=>$pseudo);
+            $data[] = array("date"=>time(), "start"=>(int) $_POST['start'], "end"=>(int) $_POST['end'], "min"=>$min, "sec"=>$sec, "pseudo"=>$pseudo);
 
-        // TODO : Upload + taille max de l'upload
+            // TODO : Upload + taille max de l'upload
 
-        if(count($data) == 1 || $min != $data[count($data)-2]['min'] || $sec != $data[count($data)-2]['sec'] || $_POST['start'] != $data[count($data)-2]['start'] || $_POST['end'] != $data[count($data)-2]['end'] || $pseudo != $data[count($data)-2]['pseudo']) {
-            file_put_contents('data/data', base64_encode(gzdeflate(serialize($data))));
+            if(count($data) == 1 || $min != $data[count($data)-2]['min'] || $sec != $data[count($data)-2]['sec'] || $_POST['start'] != $data[count($data)-2]['start'] || $_POST['end'] != $data[count($data)-2]['end'] || $pseudo != $data[count($data)-2]['pseudo']) {
+                file_put_contents('data/data', base64_encode(gzdeflate(serialize($data))));
+            }
+        }
+        else {
+            exit("Mauvais token, veuillez réessayer.");
         }
     }
+
+    $token = generate_token('defivelib');
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -110,6 +161,14 @@ table {
 fieldset {
     background-color: rgba(17, 78, 121, 0.1);
 }
+
+#disclaimer {
+    font-size: 0.75em;
+}
+
+#disclaimer p {
+    text-align: left;
+}
 </style>
 	</head>
 	<body>
@@ -170,6 +229,12 @@ fieldset {
         }
         $liste_stations = unserialize(gzinflate(base64_decode(file_get_contents('data/stations'))));
     ?>
+<div id="disclaimer">
+    <h2>Disclaimer</h2>
+    <p>Les temps rentrés sur cette page ne sont qu'indicatifs et sont fournis par les internautes eux-mêmes. Ils peuvent donc ne pas refléter les temps réels de parcours. En particulier, il est important de rappeler que le code de la route s'applique aussi aux vélos et que l'obtention d'un meilleur temps ne doit pas se faire au détriment du respect du code de la route.</p>
+    <p>Le respect des données personnelles étant particulièrement important, ce script ne conserve aucune information particulière si vous ne souhaitez pas en renseigner. Votre adresse IP est néanmoins stockée dans les logs de connexion au serveur, comme pour tout serveur web, conformément à l'article 6 de la LCEN.</p>
+    <p><a href="README.md">Plus d'informations sur DefiVelib</a></p>
+</div>
     <h2>Ajouter un trajet</h2>
     <form method="post" action="index.php"> <!-- enctype="multipart/form-data"-->
         <fieldset>
@@ -178,7 +243,12 @@ fieldset {
             <select name="start" id="start">
                 <?php
                     foreach($liste_stations as $key=>$station) {
-                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                        if(!empty($_POST['start_search']) && $_POST['start_search'] == $key)
+                            $selected = "selected";
+                        else
+                            $selected = "";
+
+                        echo "<option value=\"".$key."\" ".$selected.">".$station['name']."</option>";
                     }
                 ?>
             </select>
@@ -187,7 +257,12 @@ fieldset {
             <select name="end" id="end">
                 <?php
                     foreach($liste_stations as $key=>$station) {
-                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                        if(!empty($_POST['end_search']) && $_POST['end_search'] == $key)
+                            $selected = "selected";
+                        else
+                            $selected = "";
+
+                        echo "<option value=\"".$key."\" ".$selected.">".$station['name']."</option>";
                     }
                 ?>
             </select>
@@ -200,7 +275,8 @@ fieldset {
 <!--        <p><label for="photo">Photo du ticket (? max) : </label><input type="file" name="photo" id="photo"></p>-->
         </fieldset>
         <p>
-            <input type="submit" value="Envoyer">
+            <input type="submit" value="Envoyer"/>
+            <input type="hidden" name="token" value="<?php echo $token; ?>"/>
 <!--            <input type="hidden" name="MAX_FILE_SIZE" value="2097152">-->
         </p>
     </form>
@@ -235,7 +311,7 @@ fieldset {
 
                         foreach($data as $key=>$result) {
                             if(!empty($_SESSION['admin'])) {
-                                $delete = "<td><a href=\"?suppr=".$key."\">Supprimer</a></td>";
+                                $delete = "<td><a href=\"?suppr=".$key."&token=".$token."\">Supprimer</a></td>";
                             }
                             else {
                                 $delete = "";
@@ -247,7 +323,7 @@ fieldset {
                     else {
                         for($i = count($data) - 1; $i >= max(count($data) - 10, 0); $i--) {
                             if(!empty($_SESSION['admin'])) {
-                                $delete = "<td><a href=\"?suppr=".$i."\">Supprimer</a></td>";
+                                $delete = "<td><a href=\"?suppr=".$i."&token=".$token."\">Supprimer</a></td>";
                             }
                             else {
                                 $delete = "";
@@ -299,7 +375,8 @@ fieldset {
         </p>
 </fieldset>
         <p>
-            <input type="submit" value="Rechercher">
+            <input type="submit" value="Rechercher"/>
+            <input type="hidden" name="token" value="<?php echo $token; ?>"/>
         </p>
     </form>
     <?php
