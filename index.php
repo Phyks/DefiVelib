@@ -1,4 +1,10 @@
 <?php
+    date_default_timezone_set("Europe/Paris");
+    function search($array) {
+        global $_POST;
+        return in_array($_POST['start_search'], $array) && in_array($_POST['end_search'], $array);
+    }
+
     if(is_file('data/data')) {
         $data = unserialize(gzinflate(base64_decode(file_get_contents('data/data'))));
     }
@@ -6,15 +12,22 @@
         $data = array();
     }
 
+    $search = false;
+    if(!empty($_POST['start_search']) && !empty($_POST['end_search'])) {
+        $search = true;
+        $data = array_filter($data, "search");
+    }
+
     if((!empty($_POST['time_min']) || !empty($_POST['time_sec'])) && !empty($_POST['start']) && !empty($_POST['end'])) {
         $min = (!empty($_POST['time_min'])) ? (int) $_POST['time_min'] : 0;
         $sec = (!empty($_POST['time_sec'])) ? (int) $_POST['time_sec'] : 0;
+        $pseudo = (!empty($_POST['pseudo'])) ? $_POST['pseudo'] : "Anonyme";
 
-        $data[] = array("start"=>(int) $_POST['start'], "end"=>(int) $_POST['end'], "min"=>$min, "sec"=>$sec);
+        $data[] = array("date"=>time(), "start"=>(int) $_POST['start'], "end"=>(int) $_POST['end'], "min"=>$min, "sec"=>$sec, "pseudo"=>$pseudo);
 
-        $last_data = end($data);
+        // TODO : Upload + taille max de l'upload
 
-        if($min != $last_data['min'] || $sec != $last_data['sec'] || $_POST['start'] != $last_data['start'] || $_POST['end'] != $last_data['end']) {
+        if(count($data) == 1 || $min != $data[count($data)-2]['min'] || $sec != $data[count($data)-2]['sec'] || $_POST['start'] != $data[count($data)-2]['start'] || $_POST['end'] != $data[count($data)-2]['end'] || $pseudo != $data[count($data)-2]['pseudo']) {
             file_put_contents('data/data', base64_encode(gzdeflate(serialize($data))));
         }
     }
@@ -86,9 +99,9 @@
         $liste_stations = unserialize(gzinflate(base64_decode(file_get_contents('data/stations'))));
     ?>
     <h2>Ajouter un trajet</h2>
-    <form method="post" action="index.php">
+    <form method="post" action="index.php" enctype="multipart/form-data">
         <p><label name="start">Station de départ : </label>
-            <select name="start">
+            <select name="start" id="start">
                 <?php
                     foreach($liste_stations as $key=>$station) {
                         echo "<option value=\"".$key."\">".$station['name']."</option>";
@@ -97,7 +110,7 @@
             </select>
         </p>
         <p><label for="end">Station d'arrivée : </label>
-            <select name="end">
+            <select name="end" id="end">
                 <?php
                     foreach($liste_stations as $key=>$station) {
                         echo "<option value=\"".$key."\">".$station['name']."</option>";
@@ -106,21 +119,43 @@
             </select>
         </p>
         <p><label for="time_min">Durée du trajet : </label><input type="int" name="time_min" id="time_min" size="2"/>min <input type="int" name="time_sec" id="time_sec" size="2"/>s</p>
-        <p><input type="submit" value="Envoyer"></p>
+        <p><label for="pseudo">Votre pseudo (optionnel) : </label><input type="text" name="pseudo" id="pseudo"/></p>
+        <p><label for="photo">Photo du ticket (? max) : </label><input type="file" name="photo" id="photo"></p>
+        <p>
+            <input type="submit" value="Envoyer">
+            <input type="hidden" name="MAX_FILE_SIZE" value="2097152">
+        </p>
     </form>
-    <h2>Derniers trajets ajoutés</h2>
+    <h2><?php if($search) {?>Résultats<?php } else {?>Derniers trajets ajoutés<?php }?></h2>
     <?php
         if(!empty($data)) {
     ?>
             <table>
                 <tr>
+                    <th>Date</th>
                     <th>Départ</th>
                     <th>Arrivée</th>
                     <th>Temps</th>
+                    <th>Pseudo</th>
                 </tr>
                 <?php
-                    for($i = count($data) - 1; $i > max(count($data) - 11, 0); $i--) {
-                        echo "<tr><td>".htmlspecialchars($liste_stations[$data[$i]['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['end']]['name'])."</td><td>".(int) $data[$i]['min']."min ".(int) $data[$i]['sec']."s</td></tr>";
+                    if($search) {
+                        $min = array();
+                        $sec = array();
+                        foreach($data as $key => $result) {
+                            $min[$key] = $result['min'];
+                            $sec[$key] = $result['sec'];
+                        }
+                        array_multisort($min, SORT_DESC, $sec, SORT_DESC, $data);
+
+                        foreach($data as $result) {
+                            echo "<tr><td>".date('d/m/Y à H:i', $result['date'])."</td><td>".htmlspecialchars($liste_stations[$result['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$result['end']]['name'])."</td><td>".(int) $result['min']."min ".(int) $result['sec']."s</td><td>".htmlspecialchars($result['pseudo'])."</tr>";
+                        }
+                    }
+                    else {
+                        for($i = count($data) - 1; $i >= max(count($data) - 10, 0); $i--) {
+                            echo "<tr><td>".date('d/m/Y à H:i', $data[$i]['date'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['start']]['name'])."</td><td>".htmlspecialchars($liste_stations[$data[$i]['end']]['name'])."</td><td>".(int) $data[$i]['min']."min ".(int) $data[$i]['sec']."s</td><td>".htmlspecialchars($data[$i]['pseudo'])."</tr>";
+                        }
                     }
                 ?>
             </table>
@@ -132,6 +167,30 @@
     <?php
         }
     ?>
+    <h2>Recherche de trajets</h2>
+    <form method="post" action="index.php">
+        <p><label name="start_search">Station de départ : </label>
+            <select name="start_search" id="start_search">
+                <?php
+                    foreach($liste_stations as $key=>$station) {
+                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                    }
+                ?>
+            </select>
+        </p>
+        <p><label for="end_search">Station d'arrivée : </label>
+            <select name="end_search" id="end_search">
+                <?php
+                    foreach($liste_stations as $key=>$station) {
+                        echo "<option value=\"".$key."\">".$station['name']."</option>";
+                    }
+                ?>
+            </select>
+        </p>
+        <p>
+            <input type="submit" value="Rechercher">
+        </p>
+    </form>
     </div>
     </body>
 </html>
