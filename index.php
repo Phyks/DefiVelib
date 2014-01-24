@@ -128,6 +128,12 @@ html, body {
     -moz-box-sizing: border-box; -webkit-box-sizing: border-box; box-sizing: border-box;
 }
 
+@media (max-width: 1050px) {
+    #main {
+        width: 100% !important;
+    }
+}
+
 #main h1 {
     margin: 0;
     border: 1px solid black;
